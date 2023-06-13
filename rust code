@@ -1,0 +1,157 @@
+// Facebook social circles: do pairs of vertices with higher average distnace more likely to be connected(more mutals)?
+// what is the average distance between pairs of vertices in your graph? (Breath-First Search)
+// look at every vertex and computes its average distance to everyone else 
+
+//use std::io;
+use std::env;
+use std::fs;
+use std::fs::File;
+use std::io::BufReader;
+use std::io::prelude::*;
+use std::collections::HashMap;
+use std::collections::VecDeque; 
+use std::collections::HashSet;
+use plotlib::repr::Plot;
+use plotlib::view::ContinuousView;
+use plotlib::style::{PointMarker, PointStyle};
+use plotlib::page::Page;
+
+type Vertex = i128;
+type ListOfEdges = Vec<(Vertex,Vertex)>;
+type AdjacencyList = Vec<Vertex>;
+// puts each vertex into HashMaps
+type AdjacencyLists = HashMap<Vertex, AdjacencyList>;
+
+#[derive(Debug)]
+struct Graph {
+    outedges: AdjacencyLists, 
+}
+
+// reverse direction of edges on a list (for undirected edges)
+fn reverse_edge(list:&ListOfEdges) -> ListOfEdges {
+    let mut new_list = vec![];
+    for (u,v) in list {
+        new_list.push((*u,*v));
+    }
+    new_list
+}
+
+// functions that implies graph that helps build the network edges in HashTable 
+impl Graph {
+    fn add_directed_edges(&mut self, edges:&ListOfEdges) {
+        for (u,v) in edges {
+            match self.outedges.get_mut(&u){
+                Some(adj) => adj.push(*v),
+                None => {let _ = self.outedges.insert(*u, vec![*v]);}
+            }
+        }
+    }
+    fn create_directed(edges:&ListOfEdges) -> Graph {
+        let mut g = Graph{outedges:HashMap::new()};
+        g.add_directed_edges(edges);
+        g
+    }
+    fn create_undirected(edges:&ListOfEdges) -> Graph {
+        let mut g = Self::create_directed(edges);
+        g.add_directed_edges(&reverse_edge(edges)); 
+        println!("{:?}", g.outedges);
+        g
+    }
+}
+
+// calculates the distances of one vertex
+fn one_vertex_distance(graph:&Graph, start: Vertex) -> HashMap<Vertex, Option<u32>> {
+
+    let mut distance: HashMap<Vertex, Option<u32>> = HashMap::new();
+    for (v, _) in graph.outedges.iter() {
+        distance.insert(*v, None);
+    }
+    distance.insert(start, Some(0));
+
+    let mut queue: VecDeque<Vertex> = VecDeque::new();
+    queue.push_back(start);
+
+    while let Some(v) = queue.pop_front() {
+        for u in graph.outedges[&v].iter() {
+            if let None = distance[u] {
+                distance.insert(*u,Some(distance[&v].unwrap() + 1) );
+                queue.push_back(*u);
+            }
+        }
+    }; 
+    distance
+}
+
+// laverage distance of a vertex
+fn avg_distance(graph: &Graph, v: Vertex) -> f64{
+    let mut sum_dis = 0;
+    for (_, vert_dis) in one_vertex_distance(graph, v) {
+        sum_dis += vert_dis.unwrap()
+    }
+    (sum_dis as f64) / ((graph.outedges.len() -1) as f64)
+}
+
+fn neighbors(graph:&Graph, v1: Vertex, v2: Vertex) -> usize {
+    // let mut temp: Vec<Vertex> = Vec::new();
+    let mut set1 = HashSet::new();
+    let mut set2 = HashSet::new();
+    for v in graph.outedges[&v1].iter() {
+        set1.insert(*v);
+    }
+    for v in graph.outedges[&v2].iter() {
+        set2.insert(*v); 
+    }
+    let mut count = set1.intersection(&set2).count();
+    count
+}
+
+// function that reads textfile and create vectors
+fn read_edges() -> ListOfEdges{
+    // Read in file from Stanford Dataset Collection 
+    let f = File::open("trial.txt").expect("Unable to open file");
+    let f = BufReader::new(f);
+    // Read the file line by line using the lines() iterator from std::io::BufRead.
+    let mut edges: ListOfEdges = Vec::new();
+    for line in f.lines() {
+        let line = line.expect("Unable to read line");
+        let mut iter = line.split(' ');
+        // converts string to integers (prints column 1 and column 2 separately)
+        let int = iter.next().unwrap().parse::<i128>().unwrap();  
+        println!("{}", int);
+        let int2 = iter.next().unwrap().parse::<i128>().unwrap();  
+        println!("{}", int2);
+        edges.push((int, int2))
+    }
+    edges
+}
+
+
+fn main() {
+    let edges = read_edges();
+    let graph = Graph::create_undirected(&edges);
+    let mut data1 = vec![];
+    // for (i, _) in graph.outedges.iter() {
+    //     println!("Average Distance of {}{}{}", i, ": ", avg_distance(&graph, *i))
+    // }
+    for (i, _) in graph.outedges.iter() {
+        for (j, _) in graph.outedges.iter() {
+            if *i < *j{
+                let mut avg = (avg_distance(&graph, *i) + avg_distance(&graph, *j)) / 2.0;
+                println!("{}",neighbors(&graph, *i, *j));
+                data1.push((avg, neighbors(&graph, *i, *j) as f64));
+            }
+        }
+    }
+    let s1: Plot = Plot::new(data1).point_style(
+        PointStyle::new()
+            .marker(PointMarker::Cross) // setting the marker to be a square
+            .colour("#DD3355").size(1.0),
+    );
+    let v = ContinuousView::new()
+        .add(s1)
+        .x_range(1., 4.)
+        .y_range(0., 8.)
+        .x_label("Average Distance")
+        .y_label("Common Neighbors");
+    Page::single(&v).save("scatter.svg").unwrap();
+}
